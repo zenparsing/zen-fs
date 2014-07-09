@@ -41,7 +41,7 @@ export class File {
         try {
         
             var stat = await FS.stat(path);
-            return stat.isFile();
+            return stat && stat.isFile();
         
         } catch (x) {
         

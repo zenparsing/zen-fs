@@ -57,18 +57,32 @@ export class Directory {
         await FS.mkdir(path, mode);
     }
     
-    static async traverse(path, fn) {
+    static async traverse(path, pre, post) {
     
-        var list = [];
+        async function visit(path) {
+        
+            if (pre && !await pre(path))
+                return;
+            
+            var list = [];
     
-        try { list = await FS.readdir(path) }
-        catch (x) { }
+            try { list = await FS.readdir(path) }
+            catch (x) { }
 
-        for (var i = 0; i < list.length; ++i)
-            await this.traverse(Path.join(path, list[i]), fn);
+            for (var item of list)
+                await visit(Path.join(path, item));
     
-        if (await FS.exists(path))
-            await fn(path);
+            if (await FS.exists(path))
+                await post(path);
+        }
+        
+        if (!post) {
+        
+            post = pre;
+            pre = null;
+        }
+        
+        await visit(Path.resolve(path));
     }
     
 }
