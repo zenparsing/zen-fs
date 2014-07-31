@@ -18,12 +18,10 @@ export class FileStream {
         if (!this.fd)
             return;
         
-        this.mutex.lock(async $=> {
+        return this.mutex.lock(async $=> {
         
             var fd = this.fd;
             this.fd = 0;
-        
-            await this.flushed.wait();
             await FS.close(fd);
         });
     }
