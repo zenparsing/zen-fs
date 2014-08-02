@@ -1,5 +1,4 @@
-module FS from "./FS.js";
-
+import * as FS from "./FS.js";
 import { FileStream } from "./FileStream.js";
 
 export class File {

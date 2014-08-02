@@ -1,6 +1,5 @@
-var Path = require("path");
-
-module FS from "./FS.js";
+import * as FS from "./FS.js";
+import * as Path from "node:path";
 
 export class Directory {
 

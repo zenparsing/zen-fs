@@ -1,5 +1,4 @@
-module FS from "./FS.js";
-
+import * as FS from "./FS.js";
 import { Mutex } from "./Mutex.js";
 
 export class FileStream {
