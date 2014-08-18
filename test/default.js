@@ -1,5 +1,5 @@
 import * as Path from "node:path";
-import { File, Directory } from "../src/main.js";
+import { File, Directory } from "../src/";
 
 export async function main() {
 
