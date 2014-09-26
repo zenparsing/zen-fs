@@ -1,87 +1,99 @@
 import * as FS from "./FS.js";
 import * as Path from "node:path";
 
-export class Directory {
 
-    static async exists(path) {
+export {
 
-        try {
+    exists,
+    list,
+    deleteDirectory as delete,
+    create,
+    traverse,
 
-            var stat = await FS.stat(path);
-            return stat.isDirectory();
+};
 
-        } catch (x) {
 
-            return false;
-        }
+async function exists(path) {
+
+    try {
+
+        var stat = await FS.stat(path);
+        return stat.isDirectory();
+
+    } catch (x) {
+
+        return false;
     }
+}
 
-    static async list(path) {
 
-        return FS.readdir(path);
-    }
+async function list(path) {
 
-    static async delete(path, recursive = false) {
+    return FS.readdir(path);
+}
 
-        if (!recursive)
-            return FS.rmdir(path);
 
-        await this.traverse(path, async path => {
+async function deleteDirectory(path, recursive = false) {
 
-            var stat;
+    if (!recursive)
+        return FS.rmdir(path);
 
-            try { stat = await FS.stat(path) }
-            catch (x) { }
+    await this.traverse(path, async path => {
 
-            if (!stat)
-                return;
+        var stat;
 
-            if (stat.isDirectory())
-                await FS.rmdir(path);
-            else
-                await FS.unlink(path);
-        });
-    }
+        try { stat = await FS.stat(path) }
+        catch (x) { }
 
-    static async create(path, mode) {
-
-        if (await this.exists(path))
+        if (!stat)
             return;
 
-        var parent = Path.dirname(path);
+        if (stat.isDirectory())
+            await FS.rmdir(path);
+        else
+            await FS.unlink(path);
+    });
+}
 
-        if (parent && parent !== "." && parent !== Path.dirname(parent))
-            await this.create(parent, mode);
 
-        await FS.mkdir(path, mode);
+async function create(path, mode) {
+
+    if (await this.exists(path))
+        return;
+
+    var parent = Path.dirname(path);
+
+    if (parent && parent !== "." && parent !== Path.dirname(parent))
+        await this.create(parent, mode);
+
+    await FS.mkdir(path, mode);
+}
+
+
+async function traverse(path, pre, post) {
+
+    async function visit(path) {
+
+        if (pre && !await pre(path))
+            return;
+
+        var list = [];
+
+        try { list = await FS.readdir(path) }
+        catch (x) { }
+
+        for (var item of list)
+            await visit(Path.join(path, item));
+
+        if (await FS.exists(path))
+            await post(path);
     }
 
-    static async traverse(path, pre, post) {
+    if (!post) {
 
-        async function visit(path) {
-
-            if (pre && !await pre(path))
-                return;
-
-            var list = [];
-
-            try { list = await FS.readdir(path) }
-            catch (x) { }
-
-            for (var item of list)
-                await visit(Path.join(path, item));
-
-            if (await FS.exists(path))
-                await post(path);
-        }
-
-        if (!post) {
-
-            post = pre;
-            pre = null;
-        }
-
-        await visit(Path.resolve(path));
+        post = pre;
+        pre = null;
     }
 
+    await visit(Path.resolve(path));
 }

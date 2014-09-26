@@ -1,89 +1,187 @@
+import {
+
+    pipe,
+    readBytes,
+    writeBytes,
+    bufferBytes,
+    decodeText,
+    concatText,
+    mutex,
+
+} from "streamware";
+
 import * as FS from "./FS.js";
-import { FileStream } from "./FileStream.js";
 
-export class File {
+export {
 
-    static async open(path, flags = "r", mode) {
+    FileReader,
+    FileWriter,
+    readFile as read,
+    writeFile as write,
+    statFile as stat,
+    fileExists as exists,
+    deleteFile as delete,
+    createFile as create,
+    readText,
+    writeText,
 
-        if (!flags)
-            throw new Error("File open flags not specified");
+};
 
-        var info;
 
-        try { info = await FS.stat(path) }
-        catch (x) {}
+const READ_BUFFER_SIZE = 64 * 1024;
 
-        if (info && !info.isFile())
-            throw new Error("File not found");
 
-        var fd = await FS.open(path, flags, mode),
-            stream = new FileStream(fd);
+class FileReader {
 
-        stream.path = path;
-        stream.length = info ? info.size : 0;
+    constructor(fd, position = 0) {
 
-        return stream;
+        this.fd = fd;
+        this.position = position;
+        this._mutex = mutex();
     }
 
-    static async openRead(path) {
+    async seek(position) {
 
-        return this.open(path, "r");
+        await this._mutex(async $=> this.position = position);
     }
 
-    static async openWrite(path, mode) {
+    async read(buffer = new Buffer(READ_BUFFER_SIZE)) {
 
-        return this.open(path, "w", mode);
+        return this._mutex(async $=> {
+
+            if (buffer.length === 0)
+                return buffer;
+
+            let bytesRead = await FS.read(this.fd, buffer, 0, buffer.length, this.position);
+            this.position += bytesRead;
+
+            if (bytesRead === 0)
+                return null;
+
+            if (bytesRead < buffer.length)
+                buffer = buffer.slice(0, bytesRead);
+
+            return buffer;
+        });
     }
 
-    static async exists(path) {
+    async close() {
 
-        try {
-
-            var stat = await FS.stat(path);
-            return stat && stat.isFile();
-
-        } catch (x) {
-
-            return false;
-        }
+        await this._mutex($=> FS.close(this.fd));
     }
 
-    static async delete(path) {
+}
 
-        return FS.unlink(path);
+
+class FileWriter {
+
+    constructor(fd, position = 0) {
+
+        this.fd = fd;
+        this.position = position;
     }
 
-    static async create(path, mode) {
+    async seek(position) {
 
-        return this.open(path, "w", mode);
+        await this._mutex($=> this.position = position);
     }
 
-    static async readBytes(path) {
+    async write(buffer) {
 
-        var stream = await this.open(path, "r");
-        var data = await stream.read(new Buffer(stream.length));
+        await this._mutex(async $=> {
 
-        await stream.close();
+            if (buffer.length === 0)
+                return;
 
-        return data;
+            let offset = this.position;
+            this.position += buffer.length;
+            await FS.write(this.fd, buffer, 0, buffer.length, offset);
+        });
     }
 
-    static async readText(path, encoding = "utf8") {
+    async close() {
 
-        return (await this.readBytes(path)).toString(encoding);
+        await this._mutex($=> FS.close(this.fd));
     }
 
-    static async writeBytes(path, bytes) {
+}
 
-        var stream = await this.open(path, "w");
 
-        await stream.write(bytes);
-        await stream.close();
-    }
+async function openRead(path) {
 
-    static async writeText(path, text, encoding) {
+    return new FileReader(await FS.open(path, "r"));
+}
 
-        await this.writeBytes(path, new Buffer(text, encoding));
-    }
 
+async function openWrite(path) {
+
+    return new FileWriter(await FS.open(path, "w"));
+}
+
+
+// TODO:  end vs. length vs. options object
+async function *readFile(path, start, end = Infinity) {
+
+    let reader = new FileReader(await FS.open(path, "r"), start);
+
+    try { return yield * readBytes(reader, end - reader.position) }
+    finally { await reader.close() }
+}
+
+
+async function writeFile(input, path, start) {
+
+    let writer = new FileWriter(await FS.open(path, "w"), start);
+
+    try { await writeBytes(input, writer) }
+    finally { await writer.close() }
+}
+
+
+async function statFile(path) {
+
+    try {
+
+        let stat = await FS.stat(path);
+        if (stat.isFile()) return stat;
+
+    } catch (x) { }
+
+    return null;
+}
+
+
+async function fileExists(path) {
+
+    return await statFile(path) !== null;
+}
+
+
+function deleteFile(path) {
+
+    return FS.unlink(path);
+}
+
+
+function createFile(path) {
+
+    return writeFile([], path);
+}
+
+
+function readText(path, encoding) {
+
+    return pipe([
+
+        $=> readFile(path),
+        input => bufferBytes(input, { size: READ_BUFFER_SIZE }),
+        input => decodeText(input, encoding),
+        concatText,
+    ]);
+}
+
+
+function writeText(path, text, encoding = "utf8") {
+
+    return writeFile([ new Buffer(text, encoding) ], path);
 }

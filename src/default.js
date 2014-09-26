@@ -1,3 +1,6 @@
+import * as File from "./File.js";
+import * as Directory from "./Directory.js";
+
 export * from "./FS.js";
-export * from "./File.js";
-export * from "./Directory.js";
+export { FileReader, FileWriter } from "./File.js";
+export { File, Directory };
