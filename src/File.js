@@ -1,9 +1,8 @@
 import {
 
-    pipe,
-    readBytes,
-    writeBytes,
-    bufferBytes,
+    compose,
+    skipFirst,
+    pumpBytes,
     decodeText,
     concatText,
     mutex,
@@ -14,8 +13,8 @@ import * as FS from "./FS.js";
 
 export {
 
-    FileReader,
-    FileWriter,
+    openWrite,
+    openRead,
     readFile as read,
     writeFile as write,
     statFile as stat,
@@ -33,16 +32,17 @@ const READ_BUFFER_SIZE = 64 * 1024;
 
 class FileReader {
 
-    constructor(fd, position = 0) {
+    constructor(fd, position = 0, end = Infinity) {
 
         this.fd = fd;
         this.position = position;
+        this.end = Infinity;
         this._mutex = mutex();
     }
 
     async seek(position) {
 
-        await this._mutex(async $=> this.position = position);
+        await this._mutex($=> this.position = position);
     }
 
     async read(buffer = new Buffer(READ_BUFFER_SIZE)) {
@@ -52,7 +52,9 @@ class FileReader {
             if (buffer.length === 0)
                 return buffer;
 
-            let bytesRead = await FS.read(this.fd, buffer, 0, buffer.length, this.position);
+            let toRead = Math.min(this.end - this.position, buffer.length);
+            let bytesRead = await FS.read(this.fd, buffer, 0, toRead, this.position);
+
             this.position += bytesRead;
 
             if (bytesRead === 0)
@@ -70,6 +72,27 @@ class FileReader {
         await this._mutex($=> FS.close(this.fd));
     }
 
+    [Symbol.asyncIterator]() {
+
+        let reader = this;
+
+        return skipFirst(async function*() {
+
+            let chunk = yield null;
+
+            while (true) {
+
+                let output = await reader.read(chunk);
+
+                if (!output)
+                    break;
+
+                chunk = yield output;
+            }
+
+        }());
+    }
+
 }
 
 
@@ -79,6 +102,7 @@ class FileWriter {
 
         this.fd = fd;
         this.position = position;
+        this._mutex = mutex();
     }
 
     async seek(position) {
@@ -95,6 +119,7 @@ class FileWriter {
 
             let offset = this.position;
             this.position += buffer.length;
+
             await FS.write(this.fd, buffer, 0, buffer.length, offset);
         });
     }
@@ -107,34 +132,59 @@ class FileWriter {
 }
 
 
-async function openRead(path) {
+async function openRead(path, start, end) {
 
-    return new FileReader(await FS.open(path, "r"));
+    return new FileReader(await FS.open(path, "r"), start, end)
 }
 
 
-async function openWrite(path) {
+async function openWrite(path, start) {
 
-    return new FileWriter(await FS.open(path, "w"));
+    return new FileWriter(await FS.open(path, "w"), start);
 }
 
 
-// TODO:  end vs. length vs. options object
-async function *readFile(path, start, end = Infinity) {
+function readFile(path, start, end) {
 
-    let reader = new FileReader(await FS.open(path, "r"), start);
+    return skipFirst(async function*() {
 
-    try { return yield * readBytes(reader, end - reader.position) }
-    finally { await reader.close() }
+        let chunk = yield null,
+            reader = await openRead(path, start, end);
+
+        try {
+
+            while (true) {
+
+                let output = await reader.read(chunk);
+
+                if (!output)
+                    break;
+
+                chunk = yield output;
+            }
+
+        } catch (x) {
+
+            await reader.close();
+        }
+
+    }());
 }
 
 
 async function writeFile(input, path, start) {
 
-    let writer = new FileWriter(await FS.open(path, "w"), start);
+    let writer = await openWrite(path, start);
 
-    try { await writeBytes(input, writer) }
-    finally { await writer.close() }
+    try {
+
+        for async (let chunk of input)
+            await writer.write(chunk);
+
+    } finally {
+
+        await writer.close();
+    }
 }
 
 
@@ -171,10 +221,8 @@ function createFile(path) {
 
 function readText(path, encoding) {
 
-    return pipe([
-
-        $=> readFile(path),
-        input => bufferBytes(input, { size: READ_BUFFER_SIZE }),
+    return compose(readFile(path), [
+        input => pumpBytes(input, { size: READ_BUFFER_SIZE }),
         input => decodeText(input, encoding),
         concatText,
     ]);
