@@ -1,6 +1,5 @@
 import {
 
-    compose,
     skipFirst,
     pumpBytes,
     decodeText,
@@ -76,7 +75,7 @@ class FileReader {
 
         let reader = this;
 
-        return skipFirst(async function*() {
+        return async function*() {
 
             let chunk = yield null;
 
@@ -90,7 +89,7 @@ class FileReader {
                 chunk = yield output;
             }
 
-        }());
+        }()::skipFirst();
     }
 
 }
@@ -146,7 +145,7 @@ async function openWrite(path, start) {
 
 function readFile(path, start, end) {
 
-    return skipFirst(async function*() {
+    return async function*() {
 
         let chunk = yield null,
             reader = await openRead(path, start, end);
@@ -168,7 +167,7 @@ function readFile(path, start, end) {
             await reader.close();
         }
 
-    }());
+    }()::skipFirst();
 }
 
 
@@ -221,11 +220,10 @@ function createFile(path) {
 
 function readText(path, encoding) {
 
-    return compose(readFile(path), [
-        input => pumpBytes(input, { size: READ_BUFFER_SIZE }),
-        input => decodeText(input, encoding),
-        concatText,
-    ]);
+    return readFile(path)
+        ::pumpBytes({ size: READ_BUFFER_SIZE })
+        ::decodeText(encoding)
+        ::concatText();
 }
 
 
