@@ -1,6 +1,6 @@
 import {
 
-    skipFirst,
+    skip,
     pumpBytes,
     decodeText,
     concatText,
@@ -89,7 +89,7 @@ class FileReader {
                 chunk = yield output;
             }
 
-        }()::skipFirst();
+        }()::skip();
     }
 
 }
@@ -167,7 +167,7 @@ function readFile(path, start, end) {
             await reader.close();
         }
 
-    }()::skipFirst();
+    }()::skip();
 }
 
 
