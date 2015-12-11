@@ -1,6 +1,6 @@
 import {
 
-    skip,
+    prime,
     pumpBytes,
     decodeText,
     concatText,
@@ -89,7 +89,7 @@ class FileReader {
                 chunk = yield output;
             }
 
-        }()::skip();
+        }::prime();
     }
 
 }
@@ -162,12 +162,12 @@ function readFile(path, start, end) {
                 chunk = yield output;
             }
 
-        } catch (x) {
+        } finally {
 
             await reader.close();
         }
 
-    }()::skip();
+    }::prime();
 }
 
 
@@ -177,7 +177,7 @@ async function writeFile(input, path, start) {
 
     try {
 
-        for async (let chunk of input)
+        for await (let chunk of input)
             await writer.write(chunk);
 
     } finally {
