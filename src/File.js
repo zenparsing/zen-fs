@@ -41,12 +41,12 @@ class FileReader {
 
     async seek(position) {
 
-        await this._mutex($=> this.position = position);
+        await this._mutex(_=> this.position = position);
     }
 
     async read(buffer = new Buffer(READ_BUFFER_SIZE)) {
 
-        return this._mutex(async $=> {
+        return this._mutex(async _=> {
 
             if (buffer.length === 0)
                 return buffer;
@@ -68,7 +68,7 @@ class FileReader {
 
     async close() {
 
-        await this._mutex($=> FS.close(this.fd));
+        await this._mutex(_=> FS.close(this.fd));
     }
 
     [Symbol.asyncIterator]() {
@@ -106,12 +106,12 @@ class FileWriter {
 
     async seek(position) {
 
-        await this._mutex($=> this.position = position);
+        await this._mutex(_=> this.position = position);
     }
 
     async write(buffer) {
 
-        await this._mutex(async $=> {
+        await this._mutex(async _=> {
 
             if (buffer.length === 0)
                 return;
@@ -125,7 +125,7 @@ class FileWriter {
 
     async close() {
 
-        await this._mutex($=> FS.close(this.fd));
+        await this._mutex(_=> FS.close(this.fd));
     }
 
 }
